@@ -45,7 +45,7 @@ SELECT
   SUM(stock_quantity) as total_stock,
   COUNT(vendor_id) as vendor_count,
   MAX(last_synced_at) as last_synced_at,
-  STRING_AGG(vendor_id, ',') as available_vendors
+  STRING_AGG(vendor_id, ',') as available_vendors,
 FROM products 
 WHERE is_active = true 
 GROUP BY vendor_product_id, name;
@@ -53,8 +53,6 @@ GROUP BY vendor_product_id, name;
 -- Create orders table
 CREATE TABLE orders (
   id SERIAL PRIMARY KEY,
-  vendor_product_id VARCHAR(100) NOT NULL,
-  quantity INTEGER NOT NULL,
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'success', 'failed', 'cancelled')),
   customer_id VARCHAR(100),
   total_amount DECIMAL(10,2),

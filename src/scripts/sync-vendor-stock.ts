@@ -9,45 +9,43 @@ interface VendorStockItem {
   price?: number;
 }
 
-const MAX_RETRY = 3;
-const RETRY_DELAY_MS = 2000;
-
 export async function syncVendorStock() {
   console.log("Starting vendor stock synchronization...");
 
+  // Get active vendors from database
   const vendors = await getSQLClient()
     .selectFrom("vendors")
     .selectAll()
     .where("is_active", "=", true)
     .execute();
 
+  const failedVendors: Vendor[] = [];
+
   for (const vendor of vendors) {
-    let attempt = 0;
-    let success = false;
+    try {
+      console.log(`Syncing stock for ${vendor.id}...`);
+      await syncSingleVendor(vendor);
+      console.log(`✅ ${vendor.id} stock synced successfully!`);
+    } catch (error: any) {
+      console.error(`❌ Failed to sync ${vendor.id}:`, error.message);
+      failedVendors.push(vendor);
+    }
+  }
 
-    while (attempt < MAX_RETRY && !success) {
+  // Retry failed vendors after delay
+  if (failedVendors.length > 0) {
+    console.log(
+      `\n🔁 Retrying ${failedVendors.length} failed vendors after 3s...\n`
+    );
+    await new Promise((res) => setTimeout(res, 3000));
+
+    for (const vendor of failedVendors) {
       try {
-        attempt++;
-        console.log(
-          `🔄 Attempt ${attempt}/${MAX_RETRY} - Syncing stock for ${vendor.id}...`
-        );
+        console.log(`🔁 Retrying ${vendor.id}...`);
         await syncSingleVendor(vendor);
-        console.log(`✅ ${vendor.id} stock synced successfully!`);
-        success = true;
+        console.log(`Retry succeeded for ${vendor.id}`);
       } catch (error: any) {
-        console.error(
-          `❌ Attempt ${attempt} failed for ${vendor.id}:`,
-          error.message
-        );
-
-        if (attempt < MAX_RETRY) {
-          console.log(
-            `⏳ Retrying ${vendor.id} in ${RETRY_DELAY_MS / 1000}s...\n`
-          );
-          await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
-        } else {
-          console.log(`❗ Max retries reached for ${vendor.id}. Skipping...\n`);
-        }
+        console.error(`Retry failed for ${vendor.id}:`, error.message);
       }
     }
   }
@@ -57,15 +55,19 @@ export async function syncVendorStock() {
 
 async function syncSingleVendor(vendor: Vendor) {
   try {
-    // Simulate random failure (30% chance)
-    if (Math.random() < 0.5) {
+    console.log("-".repeat(40));
+    // Simulate random failure for testing (30% chance)
+    console.log(Math.random());
+    if (Math.random() < 0.1) {
+      console.log(`Simulating failure for vendor ${vendor.id}`);
       throw new Error(`Simulated failure for vendor ${vendor.id}`);
     }
 
+    // Fetch stock data from vendor API
     const { data } = await axios.get<VendorStockItem[]>(
       vendor.stock_endpoint_url,
       {
-        timeout: 10000,
+        timeout: 10000, // 10 second timeout
         headers: {
           "User-Agent": "OrderAggregator/1.0",
         },
@@ -79,12 +81,14 @@ async function syncSingleVendor(vendor: Vendor) {
     await getSQLClient()
       .transaction()
       .execute(async (trx) => {
+        // Mark all products from this vendor as potentially stale
         await trx
           .updateTable("products")
           .set({ is_active: false })
           .where("vendor_id", "=", vendor.id)
           .execute();
 
+        // Process each stock item
         for (const item of data) {
           if (!item.id || !item.name || typeof item.quantity !== "number") {
             console.warn(`Skipping invalid item from ${vendor.id}:`, item);
@@ -120,6 +124,7 @@ async function syncSingleVendor(vendor: Vendor) {
             .execute();
         }
 
+        // Remove inactive products
         const deletedCount = await trx
           .deleteFrom("products")
           .where("vendor_id", "=", vendor.id)

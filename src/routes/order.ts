@@ -1,13 +1,13 @@
 import express, { Response, Request } from "express";
 import { placeOrder } from "../services/order";
 import { orderRequestValidator } from "../utils/orderRequestValidator";
-import { OrderSchema } from "../validations/order";
+import { ZOrderSchema } from "../validations/order";
 
 const router = express.Router();
 
 router.post(
   "/",
-  orderRequestValidator(OrderSchema),
+  orderRequestValidator(ZOrderSchema),
   async (req: Request, res: Response) => {
     try {
       const result = await placeOrder(req.body);

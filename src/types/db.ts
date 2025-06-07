@@ -31,8 +31,6 @@ export interface AggregatedProduct {
 
 export interface Order {
   id: number;
-  vendor_product_id: string; // References the logical product across vendors
-  quantity: number;
   status: "pending" | "processing" | "success" | "failed" | "cancelled";
   customer_id?: string;
   total_amount?: number;
@@ -42,7 +40,7 @@ export interface Order {
 }
 
 export interface OrderItem {
-  id: number;
+  id?: number;
   order_id: number;
   product_id: number; // References specific vendor product
   quantity: number;
