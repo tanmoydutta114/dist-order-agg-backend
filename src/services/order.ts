@@ -1,44 +1,45 @@
-import { db } from "../db";
+import { getSQLClient } from "../db";
 import { OrderRequest } from "../validations/order";
 import { v4 as uuid } from "uuid";
 import { sendOrderToQueue } from "../queue/producer";
 
-export async function placeOrder({ productId, quantity }: OrderRequest) {
-  const trx = await db.transaction().execute(async (trx) => {
-    const product = await trx
-      .selectFrom("products")
-      .selectAll()
-      .where("id", "=", productId)
-      .forUpdate()
-      .executeTakeFirst();
+export async function placeOrder(orderRequest: OrderRequest) {
+  const { vendorProductId, quantity, customerId } = orderRequest;
 
-    if (!product || product.total_stock < quantity) {
-      throw new Error("Insufficient stock or product not found.");
-    }
+  // Check if we have enough total stock across all vendors
+  const aggregatedStock = await getSQLClient()
+    .selectFrom("aggregated_products")
+    .select(["total_stock", "vendor_count", "available_vendors"])
+    .where("product_id", "=", vendorProductId)
+    .executeTakeFirst();
 
-    const orderId = uuid();
+  if (!aggregatedStock || aggregatedStock.total_stock < quantity) {
+    return {
+      error: "Insufficient stock",
+      available: aggregatedStock?.total_stock || 0,
+      requested: quantity,
+    };
+  }
 
-    await trx
-      .insertInto("orders")
-      .values({
-        id: orderId,
-        product_id: productId,
-        quantity,
-        status: "pending",
-        created_at: new Date(),
-      })
-      .execute();
+  const orderId = await getSQLClient()
+    .transaction()
+    .execute(async (trx) => {
+      // Create main order record
+      const [order] = await trx
+        .insertInto("orders")
+        .values({
+          vendor_product_id: vendorProductId,
+          quantity: quantity,
+          customer_id: customerId,
+          status: "pending",
+          created_at: new Date(),
+        })
+        .returning(["id"])
+        .execute();
 
-    await trx
-      .updateTable("products")
-      .set({ total_stock: product.total_stock - quantity })
-      .where("id", "=", productId)
-      .execute();
+      // Queue order for processing
+      await sendOrderToQueue({ orderId:order.id });
 
-    await sendOrderToQueue({ orderId });
-
-    return { orderId };
-  });
-
-  return trx;
+      return order.id;
+    });
 }

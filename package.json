@@ -1,4 +1,21 @@
 {
+  "name": "order-service",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npm run serve",
+    "start-dev": "nodemon",
+    "build": "tsc",
+    "serve": "node dist/index.js",
+    "lint": "eslint . --ext .ts",
+    "sync": "ts-node scripts/sync-vendor-stock.ts",
+    "worker": "ts-node scripts/order-worker.ts"
+  },
+  "keywords": [],
+  "author": "Tanmoy Dutta",
+  "license": "ISC",
+  "description": "",
   "dependencies": {
     "amqplib": "^0.10.8",
     "axios": "^1.9.0",
