@@ -8,7 +8,7 @@ export interface Vendor {
 }
 
 export interface Product {
-  id: number; // Auto-increment primary key
+  id: number;
   vendor_id: string;
   vendor_product_id: string; // The product ID from vendor's system
   name: string;

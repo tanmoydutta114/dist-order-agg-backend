@@ -4,14 +4,6 @@ import { de } from "zod/v4/locales";
 const router = express.Router();
 
 router.get("/stock", (req: Request, res: Response) => {
-  // Simulate occasional API failures for testing
-  // if (Math.random() < 0.1) {
-  //   // 10% failure rate
-  //   return res
-  //     .status(500)
-  //     .json({ error: "Vendor A system temporarily unavailable" });
-  // }
-
   res.json([
     {
       id: "product-1",

@@ -2,21 +2,11 @@ import { getSQLClient } from "../db";
 import { OrderItemRequest, OrderRequest } from "../validations/order";
 import { sendOrderToQueue } from "../queue/producer";
 import { OrderItem } from "../types/db";
-
-interface ProductValidation {
-  vendorProductId: string;
-  requestedQty: number;
-  availableQty: number;
-  canFulfill: boolean;
-  cheapestPrice: number;
-  vendorCount: number;
-  bestVendorId: string;
-}
+import { ProductValidation } from "../types/order";
 
 export async function placeOrder(orderRequest: OrderRequest) {
   const { products, customerId } = orderRequest;
 
-  // Step 1: Validate all products and check availability
   const validation = await validateOrderProducts(products);
 
   if (!validation.isValid) {
@@ -25,14 +15,12 @@ export async function placeOrder(orderRequest: OrderRequest) {
     );
   }
 
-  // Step 2: Create order in database
   const orderId = await createOrderInDatabase(
     customerId,
     products,
     validation.validatedProducts
   );
 
-  // Step 3: Queue for processing
   await sendOrderToQueue({ orderId });
 
   return orderId;
@@ -41,7 +29,6 @@ export async function placeOrder(orderRequest: OrderRequest) {
 async function validateOrderProducts(products: OrderItemRequest[]) {
   const requestedVendorProductIds = products.map((p) => p.vendorProductId);
 
-  // Get all products with their stock and pricing info in one query
   const availableProducts = await getSQLClient()
     .selectFrom("products")
     .innerJoin("vendors", "vendors.id", "products.vendor_id")
@@ -64,7 +51,6 @@ async function validateOrderProducts(products: OrderItemRequest[]) {
   const validatedProducts: ProductValidation[] = [];
   const errors: Array<{ error: string; productId: string; details?: any }> = [];
 
-  // Group products by vendor_product_id
   const productGroups = new Map<string, typeof availableProducts>();
   for (const product of availableProducts) {
     if (!productGroups.has(product.vendor_product_id)) {
@@ -73,7 +59,6 @@ async function validateOrderProducts(products: OrderItemRequest[]) {
     productGroups.get(product.vendor_product_id)!.push(product);
   }
 
-  // Validate each requested product
   for (const requestedProduct of products) {
     const { vendorProductId, quantity } = requestedProduct;
     const availableOptions = productGroups.get(vendorProductId) || [];
@@ -121,7 +106,7 @@ async function validateOrderProducts(products: OrderItemRequest[]) {
       (sum, option) => sum + option.stock_quantity,
       0
     );
-    const cheapestOption = availableOptions[0]; // Already sorted by price ASC
+    const cheapestOption = availableOptions[0];
 
     validatedProducts.push({
       vendorProductId,
@@ -134,7 +119,7 @@ async function validateOrderProducts(products: OrderItemRequest[]) {
     });
 
     console.log(
-      `✅ ${vendorProductId}: Can fulfill ${quantity} units. Best option: ${canFulfillVendor.vendor_name} ($${canFulfillVendor.price}, stock: ${canFulfillVendor.stock_quantity})`
+      `${vendorProductId}: Can fulfill ${quantity} units. Best option: ${canFulfillVendor.vendor_name} ($${canFulfillVendor.price}, stock: ${canFulfillVendor.stock_quantity})`
     );
   }
 
@@ -153,7 +138,6 @@ async function createOrderInDatabase(
   return await getSQLClient()
     .transaction()
     .execute(async (trx) => {
-      // Create main order record
       const [order] = await trx
         .insertInto("orders")
         .values({
@@ -175,7 +159,7 @@ async function createOrderInDatabase(
           products.map((p) => p.vendorProductId)
         )
         .where("is_active", "=", true)
-        .distinctOn("vendor_product_id") // Get one product per vendor_product_id
+        .distinctOn("vendor_product_id")
         .execute();
 
       const orderItems: OrderItem[] = products.map((product) => {
@@ -200,56 +184,7 @@ async function createOrderInDatabase(
 
       await trx.insertInto("order_items").values(orderItems).execute();
 
-      console.log(
-        `📝 Created order ${order.id} with ${orderItems.length} items`
-      );
+      console.log(`Created order ${order.id} with ${orderItems.length} items`);
       return order.id;
     });
-}
-
-// Optional: Add a function to get real-time stock info for frontend
-export async function getProductAvailability(vendorProductIds: string[]) {
-  const products = await getSQLClient()
-    .selectFrom("products")
-    .innerJoin("vendors", "vendors.id", "products.vendor_id")
-    .select([
-      "products.vendor_product_id",
-      "products.vendor_id",
-      "products.stock_quantity",
-      "products.price",
-      "vendors.name as vendor_name",
-    ])
-    .where("products.vendor_product_id", "in", vendorProductIds)
-    .where("products.is_active", "=", true)
-    .where("products.stock_quantity", ">", 0)
-    .orderBy("products.vendor_product_id")
-    .orderBy("products.price", "asc")
-    .execute();
-
-  const availability = new Map<
-    string,
-    Array<{
-      vendorId: string;
-      vendorName: string;
-      stock: number;
-      price: number;
-      maxOrderQty: number;
-    }>
-  >();
-
-  for (const product of products) {
-    if (!availability.has(product.vendor_product_id)) {
-      availability.set(product.vendor_product_id, []);
-    }
-
-    availability.get(product.vendor_product_id)!.push({
-      vendorId: product.vendor_id,
-      vendorName: product.vendor_name,
-      stock: product.stock_quantity,
-      price: product.price,
-      maxOrderQty: product.stock_quantity, // Max quantity you can order from this vendor
-    });
-  }
-
-  return Object.fromEntries(availability);
 }

@@ -3,13 +3,12 @@ import express from "express";
 const router = express.Router();
 
 router.get("/stock", (req, res) => {
-  // Simulate different stock levels and overlapping products
   res.json([
     {
-      id: "product-1", // Same product as Vendor A
+      id: "product-1",
       name: "Premium Laptop",
       quantity: Math.floor(Math.random() * 30) + 5,
-      price: 1249.99, // Different price
+      price: 1249.99,
     },
     {
       id: "product-4",

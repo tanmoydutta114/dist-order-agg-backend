@@ -1,16 +1,8 @@
 import axios from "axios";
 import { getSQLClient } from "../db";
 import { Vendor } from "../types/db";
-
-interface VendorStockItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price?: number;
-}
-
-const MAX_RETRY = 3;
-const RETRY_DELAY_MS = 2000;
+import { MAX_RETRY, RETRY_DELAY_MS } from "../types/constants";
+import { VendorStockItem } from "../types/vendorSync";
 
 export async function syncVendorStock() {
   console.log("Starting vendor stock synchronization...");
@@ -32,21 +24,21 @@ export async function syncVendorStock() {
           `🔄 Attempt ${attempt}/${MAX_RETRY} - Syncing stock for ${vendor.id}...`
         );
         await syncSingleVendor(vendor);
-        console.log(`✅ ${vendor.id} stock synced successfully!`);
+        console.log(`${vendor.id} stock synced successfully!`);
         success = true;
       } catch (error: any) {
         console.error(
-          `❌ Attempt ${attempt} failed for ${vendor.id}:`,
+          `Attempt ${attempt} failed for ${vendor.id}:`,
           error.message
         );
 
         if (attempt < MAX_RETRY) {
           console.log(
-            `⏳ Retrying ${vendor.id} in ${RETRY_DELAY_MS / 1000}s...\n`
+            `Retrying ${vendor.id} in ${RETRY_DELAY_MS / 1000}s...\n`
           );
           await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
         } else {
-          console.log(`❗ Max retries reached for ${vendor.id}. Skipping...\n`);
+          console.log(`Max retries reached for ${vendor.id}. Skipping...\n`);
         }
       }
     }
@@ -92,7 +84,7 @@ async function syncSingleVendor(vendor: Vendor) {
           }
 
           console.log(
-            `  📦 ${vendor.id}:${item.id} - ${item.name} (${item.quantity})`
+            `${vendor.id}:${item.id} - ${item.name} (${item.quantity})`
           );
 
           await trx
@@ -128,7 +120,7 @@ async function syncSingleVendor(vendor: Vendor) {
 
         if (deletedCount.numDeletedRows > 0) {
           console.log(
-            `  🗑️  Removed ${deletedCount.numDeletedRows} discontinued products from ${vendor.id}`
+            `Removed ${deletedCount.numDeletedRows} discontinued products from ${vendor.id}`
           );
         }
       });

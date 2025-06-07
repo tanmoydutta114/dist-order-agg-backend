@@ -26,3 +26,14 @@ This is a TypeScript-based backend system that aggregates stock from third-party
    ```bash
    npm install
    ```
+2. **Database Setup** <br>
+   Just copy all the SQL from tableSchemas.sql and execute that it should create all the tables
+
+3. **ENV file** <br>
+   ```bash
+   DATABASE_URL=""
+   ```
+4. **RabbitMQ** <br>
+   Make sure RabbitMQ is installed.
+   run `npm run worker` it should start the consumer process.
+

@@ -1,8 +1,7 @@
 import amqp from "amqplib";
 import { getSQLClient } from "../db";
-
-const QUEUE = "orders";
-const MAX_RETRY = 3;
+import { QUEUE, MAX_RETRY } from "../types/constants";
+import { ProductInfo, AllocationResult, AllocationItem } from "../types/order";
 
 (async () => {
   const conn = await amqp.connect(
@@ -14,21 +13,21 @@ const MAX_RETRY = 3;
   // Process one order at a time per worker
   ch.prefetch(1);
 
-  console.log("🚀 Order processor started, waiting for orders...");
+  console.log("Order processor started, waiting for orders...");
 
   ch.consume(QUEUE, async (msg) => {
     if (!msg) return;
 
     const { orderId, retry = 0 } = JSON.parse(msg.content.toString());
-    console.log(`📦 Processing order ${orderId}, attempt ${retry + 1}`);
+    console.log(`Processing order ${orderId}, attempt ${retry + 1}`);
 
     try {
       await processOrderWithItems(orderId);
       ch.ack(msg);
-      console.log(`✅ Order ${orderId} processed successfully`);
+      console.log(`Order ${orderId} processed successfully`);
     } catch (err) {
       console.log(err);
-      console.error(`❌ Order ${orderId} failed:`, err.message);
+      console.error(`Order ${orderId} failed:`, err.message);
 
       if (retry + 1 >= MAX_RETRY) {
         await handleOrderFailure(orderId, err.message);
@@ -49,11 +48,6 @@ const MAX_RETRY = 3;
   });
 })();
 
-// ===============================
-// 4. MAIN ORDER PROCESSING LOGIC
-// ===============================
-
-// Fixed processOrderWithItems function
 export async function processOrderWithItems(orderId: number) {
   await getSQLClient()
     .transaction()
@@ -79,11 +73,10 @@ export async function processOrderWithItems(orderId: number) {
         throw new Error(`Order ${orderId} not found or already processed`);
       }
 
-      console.log(`🔄 Processing order: ${orderId}`);
+      console.log(`Processing order: ${orderId}`);
       const orderProductsIds = order.map((item) => item.vendor_product_id);
       let totalAmount = 0;
 
-      // 2. Get available vendor products, ordered by price (cheapest first)
       const availableProducts = await trx
         .selectFrom("products")
         .innerJoin("vendors", "vendors.id", "products.vendor_id")
@@ -98,13 +91,11 @@ export async function processOrderWithItems(orderId: number) {
         .where("products.vendor_product_id", "in", orderProductsIds)
         .where("products.is_active", "=", true)
         .where("products.stock_quantity", ">", 0)
-        .orderBy("products.price", "asc") // This orders ALL products by price
+        .orderBy("products.price", "asc")
         .forUpdate() // Lock all relevant product rows
         .execute();
 
-      // Process each unique product in the order
       for (const vendorProductId of orderProductsIds) {
-        // Find the order item for this product
         const orderItem = order.find(
           (item) => item.vendor_product_id === vendorProductId
         );
@@ -114,7 +105,6 @@ export async function processOrderWithItems(orderId: number) {
           );
         }
 
-        // Filter available products for this specific vendor_product_id and sort by price
         const productsForThisItem = availableProducts
           .filter((p) => p.vendor_product_id === vendorProductId)
           .sort((a, b) => a.price - b.price); // Sort by price ascending (cheapest first)
@@ -124,7 +114,7 @@ export async function processOrderWithItems(orderId: number) {
         }
 
         console.log(
-          `\n🔍 Processing ${vendorProductId} (need ${orderItem.quantity} units):`
+          `\nProcessing ${vendorProductId} (need ${orderItem.quantity} units):`
         );
         productsForThisItem.forEach((p) => {
           console.log(
@@ -144,9 +134,7 @@ export async function processOrderWithItems(orderId: number) {
           );
         }
 
-        // 4. Reserve stock and update order items
         for (const allocation of allocations.items) {
-          // Reserve stock atomically
           const stockUpdate = await trx
             .updateTable("products")
             .set((eb) => ({
@@ -163,7 +151,6 @@ export async function processOrderWithItems(orderId: number) {
             );
           }
 
-          // Update order item record
           await trx
             .updateTable("order_items")
             .set({
@@ -172,10 +159,9 @@ export async function processOrderWithItems(orderId: number) {
               price: allocation.price,
             })
             .where("order_id", "=", orderId)
-            .where("product_id", "=", orderItem.product_id) // Use the original product_id from order_items
+            .where("product_id", "=", orderItem.product_id)
             .execute();
 
-          // Create stock reservation record
           await trx
             .insertInto("stock_reservations")
             .values({
@@ -190,12 +176,11 @@ export async function processOrderWithItems(orderId: number) {
           totalAmount += allocation.price * allocation.quantity;
 
           console.log(
-            `  🎯 Reserved ${allocation.quantity}x from ${allocation.vendorId} (${allocation.vendorName}) at $${allocation.price} each (product id: ${allocation.productId})`
+            `Reserved ${allocation.quantity}x from ${allocation.vendorId} (${allocation.vendorName}) at $${allocation.price} each (product id: ${allocation.productId})`
           );
         }
       }
 
-      // 5. Update order status
       await trx
         .updateTable("orders")
         .set({
@@ -210,118 +195,41 @@ export async function processOrderWithItems(orderId: number) {
       // await reserveWithVendors(allocations.items);
     });
 
-  // 7. Complete the order (outside transaction for non-critical operations)
   await finalizeOrder(orderId);
 }
 
-// ===============================
-// 5. STOCK ALLOCATION LOGIC
-// ===============================
-
-interface ProductInfo {
-  id: number;
-  vendor_id: string;
-  vendor_product_id: string;
-  stock_quantity: number;
-  price: number;
-  vendor_name: string;
-}
-
-interface AllocationItem {
-  productId: number;
-  vendorId: string;
-  vendorName: string; // Added for better logging
-  quantity: number;
-  price: number;
-}
-
-interface AllocationResult {
-  items: AllocationItem[];
-  totalAllocated: number;
-  totalCost: number;
-}
-
-// async function allocateStock(
-//   availableProducts: ProductInfo[],
-//   requestedQuantity: number
-// ): Promise<AllocationResult> {
-//   const allocations: AllocationItem[] = [];
-//   let remainingQuantity = requestedQuantity;
-//   let totalCost = 0;
-
-//   // Greedy allocation: start with cheapest vendor
-//   for (const product of availableProducts) {
-//     if (remainingQuantity <= 0) break;
-
-//     const allocateQuantity = Math.min(
-//       remainingQuantity,
-//       product.stock_quantity
-//     );
-
-//     if (allocateQuantity > 0) {
-//       allocations.push({
-//         productId: product.id, // DB id
-//         vendorId: product.vendor_id,
-//         vendorName: product.vendor_name, // Add vendor name for better logging
-//         quantity: allocateQuantity,
-//         price: product.price,
-//       });
-
-//       remainingQuantity -= allocateQuantity;
-//       totalCost += product.price * allocateQuantity;
-
-//       console.log(
-//         `  📋 Plan: ${allocateQuantity}x from ${product.vendor_id} (${product.vendor_name}) at $${product.price} (product id: ${product.id})`
-//       );
-//     }
-//   }
-
-//   return {
-//     items: allocations,
-//     totalAllocated: requestedQuantity - remainingQuantity,
-//     totalCost,
-//   };
-// }
-
-// ===============================
-// 6. VENDOR API INTEGRATION
-// ===============================
-
-// Updated allocation function - NO SPLITTING, whole quantity from single vendor
 async function allocateStock(
   availableProducts: ProductInfo[],
   requestedQuantity: number
 ): Promise<AllocationResult> {
-  // Find the first vendor (cheapest) that can fulfill the ENTIRE quantity
   for (const product of availableProducts) {
     if (product.stock_quantity >= requestedQuantity) {
       const allocation: AllocationItem = {
         productId: product.id,
         vendorId: product.vendor_id,
         vendorName: product.vendor_name,
-        quantity: requestedQuantity, // Take the full requested quantity
+        quantity: requestedQuantity,
         price: product.price,
       };
 
       const totalCost = product.price * requestedQuantity;
 
       console.log(
-        `  📋 Plan: ${requestedQuantity}x from ${product.vendor_id} (${product.vendor_name}) at ${product.price} (product id: ${product.id}) - FULL QUANTITY`
+        `Plan: ${requestedQuantity}x from ${product.vendor_id} (${product.vendor_name}) at ${product.price} (product id: ${product.id}) - FULL QUANTITY`
       );
 
       return {
-        items: [allocation], // Single allocation, no splitting
+        items: [allocation],
         totalAllocated: requestedQuantity,
         totalCost,
       };
     } else {
       console.log(
-        `  ❌ Skipping ${product.vendor_id} (${product.vendor_name}) - only has ${product.stock_quantity}, need ${requestedQuantity} (product id: ${product.id})`
+        `Skipping ${product.vendor_id} (${product.vendor_name}) - only has ${product.stock_quantity}, need ${requestedQuantity} (product id: ${product.id})`
       );
     }
   }
 
-  // If we reach here, no single vendor can fulfill the entire quantity
   return {
     items: [],
     totalAllocated: 0,
@@ -329,23 +237,50 @@ async function allocateStock(
   };
 }
 
+async function finalizeOrder(orderId: number) {
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    await getSQLClient()
+      .transaction()
+      .execute(async (trx) => {
+        // Confirm all reservations
+        await trx
+          .updateTable("stock_reservations")
+          .set({ status: "confirmed" })
+          .where("order_id", "=", orderId)
+          .where("status", "=", "reserved")
+          .execute();
+        await trx
+          .updateTable("orders")
+          .set({ status: "success" })
+          .where("id", "=", orderId)
+          .execute();
+      });
+
+    console.log(`Order ${orderId} completed successfully`);
+  } catch (error) {
+    console.error(`Failed to finalize order ${orderId}:`, error);
+    throw error;
+  }
+}
+
+// NOT IN USE
 async function reserveWithVendors(allocations: AllocationItem[]) {
   const vendorReservations = new Map<string, number>();
 
-  // Group reservations by vendor
   for (const allocation of allocations) {
     const current = vendorReservations.get(allocation.vendorId) || 0;
     vendorReservations.set(allocation.vendorId, current + allocation.quantity);
   }
 
-  // Make reservation API calls to each vendor
   const reservationPromises = Array.from(vendorReservations.entries()).map(
     async ([vendorId, quantity]) => {
       try {
         // await callVendorReserveAPI(vendorId, quantity);
-        console.log(`✅ Reserved ${quantity} units with ${vendorId}`);
+        console.log(`Reserved ${quantity} units with ${vendorId}`);
       } catch (error) {
-        console.error(`❌ Failed to reserve with ${vendorId}:`, error.message);
+        console.error(`Failed to reserve with ${vendorId}:`, error.message);
         throw new Error(
           `Vendor ${vendorId} reservation failed: ${error.message}`
         );
@@ -358,7 +293,7 @@ async function reserveWithVendors(allocations: AllocationItem[]) {
 
 // async function callVendorReserveAPI(vendorId: string, quantity: number) {
 //   // Simulate vendor reservation API call
-//   const vendor = await db
+//   const vendor = await getSQLClient()
 //     .selectFrom("vendors")
 //     .select(["stock_endpoint_url"])
 //     .where("id", "=", vendorId)
@@ -408,48 +343,12 @@ async function reserveWithVendors(allocations: AllocationItem[]) {
 // 7. ORDER FINALIZATION
 // ===============================
 
-async function finalizeOrder(orderId: number) {
-  try {
-    // Simulate payment processing, shipping, etc.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    await getSQLClient()
-      .transaction()
-      .execute(async (trx) => {
-        // Confirm all reservations
-        await trx
-          .updateTable("stock_reservations")
-          .set({ status: "confirmed" })
-          .where("order_id", "=", orderId)
-          .where("status", "=", "reserved")
-          .execute();
-
-        // Mark order as successful
-        await trx
-          .updateTable("orders")
-          .set({ status: "success" })
-          .where("id", "=", orderId)
-          .execute();
-      });
-
-    console.log(`🎉 Order ${orderId} completed successfully`);
-  } catch (error) {
-    console.error(`Failed to finalize order ${orderId}:`, error);
-    throw error;
-  }
-}
-
-// ===============================
-// 8. ORDER FAILURE HANDLING
-// ===============================
-
 async function handleOrderFailure(orderId: number, errorMessage: string) {
-  console.log(`💥 Handling failure for order ${orderId}: ${errorMessage}`);
+  console.log(`Handling failure for order ${orderId}: ${errorMessage}`);
 
   await getSQLClient()
     .transaction()
     .execute(async (trx) => {
-      // Get all order items to release stock
       const orderItems = await trx
         .selectFrom("order_items")
         .selectAll()
@@ -467,18 +366,16 @@ async function handleOrderFailure(orderId: number, errorMessage: string) {
           .execute();
 
         console.log(
-          `🔄 Released ${item.reserved_quantity} units back to product ${item.product_id}`
+          `Released ${item.reserved_quantity} units back to product ${item.product_id}`
         );
       }
 
-      // Mark reservations as released
       await trx
         .updateTable("stock_reservations")
         .set({ status: "released" })
         .where("order_id", "=", orderId)
         .execute();
 
-      // Mark order as failed
       await trx
         .updateTable("orders")
         .set({
@@ -489,5 +386,5 @@ async function handleOrderFailure(orderId: number, errorMessage: string) {
         .execute();
     });
 
-  console.log(`♻️  Order ${orderId} failure handled - stock released`);
+  console.log(`Order ${orderId} failure handled - stock released`);
 }

@@ -9,7 +9,6 @@
     "build": "tsc",
     "serve": "node dist/index.js",
     "lint": "eslint . --ext .ts",
-    "sync": "ts-node scripts/sync-vendor-stock.ts",
     "worker": "ts-node scripts/order-worker.ts"
   },
   "keywords": [],
