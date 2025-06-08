@@ -25,9 +25,9 @@ export async function syncVendorStock() {
     try {
       console.log(`Syncing stock for ${vendor.id}...`);
       await syncSingleVendor(vendor);
-      console.log(`✅ ${vendor.id} stock synced successfully!`);
+      console.log(`${vendor.id} stock synced successfully!`);
     } catch (error: any) {
-      console.error(`❌ Failed to sync ${vendor.id}:`, error.message);
+      console.error(`Failed to sync ${vendor.id}:`, error.message);
       failedVendors.push(vendor);
     }
   }
@@ -35,13 +35,13 @@ export async function syncVendorStock() {
   // Retry failed vendors after delay
   if (failedVendors.length > 0) {
     console.log(
-      `\n🔁 Retrying ${failedVendors.length} failed vendors after 3s...\n`
+      `\nRetrying ${failedVendors.length} failed vendors after 3s...\n`
     );
     await new Promise((res) => setTimeout(res, 3000));
 
     for (const vendor of failedVendors) {
       try {
-        console.log(`🔁 Retrying ${vendor.id}...`);
+        console.log(`Retrying ${vendor.id}...`);
         await syncSingleVendor(vendor);
         console.log(`Retry succeeded for ${vendor.id}`);
       } catch (error: any) {
@@ -96,7 +96,7 @@ async function syncSingleVendor(vendor: Vendor) {
           }
 
           console.log(
-            `  📦 ${vendor.id}:${item.id} - ${item.name} (${item.quantity})`
+            `${vendor.id}:${item.id} - ${item.name} (${item.quantity})`
           );
 
           await trx
@@ -133,7 +133,7 @@ async function syncSingleVendor(vendor: Vendor) {
 
         if (deletedCount.numDeletedRows > 0) {
           console.log(
-            `  🗑️  Removed ${deletedCount.numDeletedRows} discontinued products from ${vendor.id}`
+            `Removed ${deletedCount.numDeletedRows} discontinued products from ${vendor.id}`
           );
         }
       });
@@ -144,3 +144,4 @@ async function syncSingleVendor(vendor: Vendor) {
     throw error;
   }
 }
+  

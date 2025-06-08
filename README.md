@@ -13,7 +13,7 @@ This is a TypeScript-based backend system that aggregates stock from third-party
 
 ## Features
 
-- Sync vendor stock (`scripts/sync-vendor-stock.ts`)
+- Sync vendor stock
 - Place order via `/order` (REST API)
 - Queue-based processing (RabbitMQ)
 - Strong consistency via DB transactions
@@ -36,4 +36,3 @@ This is a TypeScript-based backend system that aggregates stock from third-party
 4. **RabbitMQ** <br>
    Make sure RabbitMQ is installed.
    run `npm run worker` it should start the consumer process.
-

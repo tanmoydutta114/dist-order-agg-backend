@@ -23,7 +23,7 @@ export async function placeOrder(orderRequest: OrderRequest) {
 
   await sendOrderToQueue({ orderId });
 
-  return orderId;
+  return { message: `Order Pushed to queue successfully`, orderId };
 }
 
 async function validateOrderProducts(products: OrderItemRequest[]) {

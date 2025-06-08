@@ -9,7 +9,7 @@
     "build": "tsc",
     "serve": "node dist/index.js",
     "lint": "eslint . --ext .ts",
-    "worker": "ts-node scripts/order-worker.ts"
+    "worker": "ts-node src/scripts/order-worker.ts"
   },
   "keywords": [],
   "author": "Tanmoy Dutta",

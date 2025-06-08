@@ -1,7 +1,3 @@
-// ===============================
-// DATABASE SCHEMA (SQL)
-// ===============================
-
 -- Create vendors table first
 CREATE TABLE vendors (
   id VARCHAR(50) PRIMARY KEY,
@@ -29,12 +25,7 @@ CREATE TABLE products (
   UNIQUE(vendor_id, vendor_product_id),
   
   -- Foreign key to vendors
-  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
-  
-  -- Indexes for performance
-  INDEX idx_vendor_product (vendor_id, vendor_product_id),
-  INDEX idx_stock_quantity (stock_quantity),
-  INDEX idx_last_synced (last_synced_at)
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE
 );
 
 -- Create aggregated_products view for unified inventory
@@ -58,12 +49,7 @@ CREATE TABLE orders (
   total_amount DECIMAL(10,2),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   processed_at TIMESTAMP,
-  failed_at TIMESTAMP,
-  
-  -- Indexes
-  INDEX idx_order_status (status),
-  INDEX idx_order_created (created_at),
-  INDEX idx_vendor_product_order (vendor_product_id)
+  failed_at TIMESTAMP
 );
 
 -- Create order_items table for detailed tracking
@@ -76,10 +62,7 @@ CREATE TABLE order_items (
   price DECIMAL(10,2),
   
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  
-  INDEX idx_order_items_order (order_id),
-  INDEX idx_order_items_product (product_id)
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
 -- Create stock_reservations table for tracking vendor reservations
@@ -93,11 +76,7 @@ CREATE TABLE stock_reservations (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  
-  INDEX idx_reservations_order (order_id),
-  INDEX idx_reservations_product (product_id),
-  INDEX idx_reservations_expires (expires_at)
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
 -- Insert sample vendors
