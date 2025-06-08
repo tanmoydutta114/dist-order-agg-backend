@@ -1,4 +1,4 @@
-# dist-order-agg-backend# Distributed Order Aggregator System
+# Distributed Order Aggregator System #
 
 This is a TypeScript-based backend system that aggregates stock from third-party vendors and processes high-volume orders using a local PostgreSQL DB and RabbitMQ queue.
 
