@@ -36,3 +36,5 @@ This is a TypeScript-based backend system that aggregates stock from third-party
 4. **RabbitMQ** <br>
    Make sure RabbitMQ is installed.
    run `npm run worker` it should start the consumer process.
+5. **Run Backend** <br>
+   run `npm run start-dev` it should start the Backend.
