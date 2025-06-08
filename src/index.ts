@@ -1,15 +1,23 @@
 import express from "express";
 import dotenv from "dotenv";
 import orderRouter from "./routes/order";
-import vendorARouter from "./vendor/mockVendorA";
+import productRouter from "./routes/products";
+import vendorSync from "./routes/vendorsSync";
+import vendorAStock from "./vendor/mockVendorA";
+import vendorBStock from "./vendor/mockVendorB";
 
+import { requestLogger } from "./utils/requestLogger";
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(requestLogger);
 
 app.use("/order", orderRouter);
-app.use("/vendorA", vendorARouter);
+app.use("/products", productRouter);
+app.use("/vendorSync", vendorSync);
+app.use("/vendorA", vendorAStock);
+app.use("/vendorB", vendorBStock);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
